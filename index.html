@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>waas-demo</title>
+
+    <!--
+      Loaded as a CLASSIC script, not an ESM import, and this is load-bearing.
+      The bundle derives its webpack publicPath from `document.currentScript.src`,
+      then loads its MPC worker from `<publicPath>worker.bundle.js`. Under an ESM
+      import `document.currentScript` is null, webpack falls back to scanning script
+      tags, picks up Vite's client, and the worker 404s.
+
+      Files are synced into public/fordefi/ by `npm run sync-sdk` (runs on predev).
+
+      Google's two scripts are only required for the Google Drive backup provider;
+      uncomment them if you exercise backupKeys/recoverKeys with GoogleDrive.
+    -->
+    <!-- <script src="https://apis.google.com/js/api.js"></script> -->
+    <!-- <script src="https://accounts.google.com/gsi/client"></script> -->
+    <script src="/fordefi/index.bundle.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

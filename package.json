@@ -1,0 +1,23 @@
+{
+  "name": "waas-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "sync-sdk": "node scripts/sync-sdk-assets.mjs",
+    "predev": "npm run sync-sdk",
+    "dev": "vite",
+    "prebuild": "npm run sync-sdk",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.2",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.0"
+  },
+  "dependencies": {
+    "@fordefi/web-sdk": "^1.3.5"
+  }
+}
