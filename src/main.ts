@@ -1,5 +1,5 @@
 import './style.css'
-import { createEndUser, issueAuthToken } from './devApi'
+import { createEndUser, createSolanaVault, issueAuthToken } from './devApi'
 import {
   backupWithExternalKey,
   formatThrown,
@@ -64,6 +64,19 @@ app.innerHTML = `
     </p>
   </fieldset>
 
+  <fieldset id="vault">
+    <legend>Solana vault</legend>
+    <div class="actions">
+      <button id="create-vault" type="button">Create Solana vault</button>
+    </div>
+    <p id="vault-address" class="vault-address"></p>
+    <p class="warn-note">
+      <code>POST /api/v1/vaults</code> for the end-user ID above. The Web SDK has no vault
+      API, so the dev server makes this call with the org-wide API user token — the end user
+      never does. Keys come from that user's keyset, which needs an EdDSA key.
+    </p>
+  </fieldset>
+
   <pre id="log" aria-live="polite"></pre>
 `
 
@@ -79,6 +92,8 @@ const els = {
   genKey: app.querySelector<HTMLButtonElement>('#gen-key')!,
   doBackup: app.querySelector<HTMLButtonElement>('#do-backup')!,
   doRecover: app.querySelector<HTMLButtonElement>('#do-recover')!,
+  createVault: app.querySelector<HTMLButtonElement>('#create-vault')!,
+  vaultAddress: app.querySelector<HTMLParagraphElement>('#vault-address')!,
   log: app.querySelector<HTMLPreElement>('#log')!,
 }
 
@@ -120,7 +135,7 @@ function refreshKeyStatus(): boolean {
 }
 
 async function withBusy(label: string, fn: () => Promise<void>): Promise<void> {
-  const buttons = [els.run, els.initOnly, els.doBackup, els.doRecover]
+  const buttons = [els.run, els.initOnly, els.doBackup, els.doRecover, els.createVault]
   for (const b of buttons) b.disabled = true
   setState(`${label}…`, 'busy')
   try {
@@ -202,6 +217,30 @@ els.doRecover.addEventListener('click', () => {
   })
 })
 
+els.createVault.addEventListener('click', () => {
+  void withBusy('Creating vault', async () => {
+    const userId = els.userId.value.trim()
+    if (!userId) throw new Error('End-user ID is required — run "Onboard & login" first')
+
+    const name = `waas-demo-solana-${Date.now()}`
+    log('info', `creating solana vault name=${name} end_user_id=${userId}`)
+    const vault = await createSolanaVault(userId, name)
+    log('info', `vault created id=${vault.id} state=${vault.state} address=${vault.address || '—'}`)
+
+    // The address is derived from the keyset, so it should come back on the create response.
+    // If it ever doesn't, show the id rather than an empty line.
+    if (vault.address) {
+      els.vaultAddress.textContent = vault.address
+      els.vaultAddress.dataset.kind = 'ok'
+      setState(`Solana vault created — ${vault.address}`, 'ok')
+    } else {
+      els.vaultAddress.textContent = `${vault.id} — no address in the response`
+      els.vaultAddress.dataset.kind = 'warn'
+      setState('Vault created, but the response carried no address', 'warn')
+    }
+  })
+})
+
 els.genKey.addEventListener('click', () => {
   const key = generateBackupKey()
   els.backupKey.value = key
@@ -223,6 +262,7 @@ els.initOnly.addEventListener('click', () => {
 
 els.clear.addEventListener('click', () => {
   els.log.textContent = ''
+  els.vaultAddress.textContent = ''
   setState('', 'ok')
 })
 

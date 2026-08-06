@@ -8,9 +8,9 @@ const DEFAULT_BASE_URL = 'https://api.fordefi.com'
  *
  * FORDEFI_API_USER_TOKEN is an *API user* credential with org-wide authority. It must
  * never reach the browser, so it is deliberately read WITHOUT a `VITE_` prefix: Vite
- * only inlines `VITE_*` vars into the client bundle. These two endpoints run in the
- * Node dev server, hold the token, and hand the browser nothing but a short-lived
- * end-user access token.
+ * only inlines `VITE_*` vars into the client bundle. These endpoints run in the Node
+ * dev server, hold the token, and hand the browser nothing but a short-lived end-user
+ * access token and the vaults it creates on that user's behalf.
  *
  * This stands in for your real backend. Do not ship it.
  */
@@ -52,7 +52,9 @@ function fordefiDevApi(env: Record<string, string>): Plugin {
         const route = (req.url ?? '').split('?')[0]?.replace(/\/$/, '') || '/'
 
         if (req.method !== 'POST') return next()
-        if (route !== '/end-users' && route !== '/auth-tokens') return next()
+        if (route !== '/end-users' && route !== '/auth-tokens' && route !== '/vaults') {
+          return next()
+        }
 
         if (!apiUserToken) {
           return sendJson(res, 500, {
@@ -73,6 +75,28 @@ function fordefiDevApi(env: Record<string, string>): Plugin {
             }
             const result = await callFordefi('/api/v1/end-users', {
               external_id: externalId,
+            })
+            return sendJson(res, result.ok ? 200 : result.status, result.body)
+          }
+
+          if (route === '/vaults') {
+            const endUserId =
+              typeof payload.end_user_id === 'string' && payload.end_user_id
+                ? payload.end_user_id
+                : null
+            if (!endUserId) {
+              return sendJson(res, 400, { error: 'end_user_id (string) is required' })
+            }
+            const name = typeof payload.name === 'string' && payload.name ? payload.name : null
+            if (!name) {
+              return sendJson(res, 400, { error: 'name (string) is required' })
+            }
+            // `type` is fixed here rather than taken from the request: the browser gets to ask
+            // for a vault, not to pick which chain the API user creates one on.
+            const result = await callFordefi('/api/v1/vaults', {
+              type: 'solana',
+              name,
+              end_user_id: endUserId,
             })
             return sendJson(res, result.ok ? 200 : result.status, result.body)
           }

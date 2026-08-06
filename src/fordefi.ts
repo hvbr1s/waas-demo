@@ -64,10 +64,13 @@ export async function login(
   const api = sdk()
   const fordefi = initFordefi(onLog)
 
-  onLog('info', 'login() — generating/loading ECDSA key shares, this can take a while…')
+  onLog('info', 'login() — generating/loading ECDSA + EdDSA key shares, this can take a while…')
 
   // Only request the key types you actually need; each one costs key-generation time.
-  const res = await fordefi.login(authToken, [api.FordefiKeyType.ECDSA])
+  // EdDSA is here because a Solana vault derives from an ed25519 key: creating one for an
+  // end user whose keyset holds only ECDSA fails server-side. Adding a key type changes the
+  // keyset, which puts an already-onboarded user back into BACKUP_REQUIRED.
+  const res = await fordefi.login(authToken, [api.FordefiKeyType.ECDSA, api.FordefiKeyType.EDDSA])
 
   onLog('info', `login ok — userID=${res.userID} keysetID=${res.keysetID}`)
   onLog('info', `deviceState=${res.deviceState} — ${describeDeviceState(res.deviceState)}`)

@@ -20,6 +20,24 @@ lost the foreground job. `lsof -ti:5173 | xargs kill` if port 5173 stays occupie
 `predev` runs `npm run sync-sdk`, which copies the SDK's three runtime assets into
 `public/fordefi/`. Re-run it after bumping `@fordefi/web-sdk`.
 
+### Browser
+
+Until `localhost` is whitelisted on Fordefi's side, the SDK's calls to `api.fordefi.com`
+fail CORS preflight. Open the harness in a throwaway Chrome profile with web security
+off — `--disable-web-security` is ignored unless `--user-data-dir` points somewhere
+other than your real profile:
+
+```bash
+mkdir -p /tmp/chrome-user-data      # any directory, just not your default profile
+
+open -n -a /Applications/Google\ Chrome.app --args \
+  --user-data-dir=/tmp/chrome-user-data \
+  --disable-web-security
+```
+
+Dev only, and only for this harness. The profile has every same-origin protection off,
+so don't browse anything else in it — close the window when you're done.
+
 ### .env
 
 | Variable | Reaches browser | Purpose |
@@ -60,6 +78,8 @@ token is read in Node-side plugin code only, and is deliberately *not* `VITE_`-p
 4. Reload and log in again — should now be `NO_OPERATION_REQUIRED`.
 5. **Recovery:** clear site data, log in → `RECOVERY_REQUIRED` → **Recover keys**.
    The key survives the clear only because of the `.env` prefill.
+6. **Create Solana vault** — `POST /api/v1/vaults` with `end_user_id`, via the dev server.
+   The base58 address renders under the button and the vault id lands in the log.
 
 Everything is timestamped in the log panel. `Init SDK only` isolates
 `getInstance()` from the network steps when you need to narrow a failure down.
@@ -78,7 +98,8 @@ Everything is timestamped in the log panel. `Init SDK only` isolates
 These are all things that cost time once already.
 
 - **CORS whitelisting.** Fordefi must whitelist your domain. If login fails with a
-  network error rather than a `FordefiError`, this is why — not the code.
+  network error rather than a `FordefiError`, this is why — not the code. For local runs,
+  use the CORS-disabled Chrome profile from [Setup → Browser](#browser).
 - **The SDK is loaded by a classic `<script>` tag, not `import`.** It's a webpack UMD
   bundle that derives its publicPath from `document.currentScript.src`. Under an ESM
   import that's `null`, webpack scans for script tags instead, and the MPC worker 404s.
@@ -91,13 +112,20 @@ These are all things that cost time once already.
   `32 === atob(key).length`. Stray quotes or whitespace make `atob()` throw.
 - **`recoverKeys()` validates nothing** — no key check, no type check. Validate before
   calling or you get an opaque MPC-layer failure.
+- **Changing the `login()` key-type list changes the keyset.** `login()` requests
+  `[ECDSA, EDDSA]` — EdDSA because a Solana vault derives from an ed25519 key. An end user
+  onboarded before EdDSA was added comes back as `BACKUP_REQUIRED` on the next login and
+  must back up again; each extra key type also costs keygen time.
+- **The Web SDK cannot create vaults.** Its surface is `login`, `backupKeys`, `recoverKeys`,
+  `exportKeys`, `signTransaction`. Vault creation is an API-user call, hence the dev-server
+  route. It needs the bearer token only — no `x-signature`/`x-timestamp`, unlike
+  transaction creation.
 - **Don't use Vite `define` for config.** It substitutes at build but not in dev, giving
   a `ReferenceError` under `npm run dev`. Hence `virtual:fordefi-config`.
 - **Google Drive is not involved** and its `<script>` tags stay commented out in
   `index.html`. `FordefiBackupCloudProviders.initialize()` is never called; the package
   README's no-arg call for this flow both throws and is unnecessary.
 
-`README-BACKUP.md` has the deminified SDK source behind the last two points.
 
 ## Scripts
 
