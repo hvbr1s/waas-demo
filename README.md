@@ -1,7 +1,8 @@
 # waas-demo
 
 Scratch harness for the Fordefi WaaS Web SDK (`@fordefi/web-sdk`): onboards an end
-user, runs `login()`, and exercises external-key backup and recovery.
+user, runs `login()`, exercises external-key backup and recovery, then creates a Solana
+vault, reads its devnet balances, and transfers out of it via `signTransaction()`.
 
 Vite + TypeScript. The Vite dev server doubles as a stand-in backend so the API user
 token stays server-side.
@@ -45,8 +46,9 @@ so don't browse anything else in it — close the window when you're done.
 | `FORDEFI_API_USER_TOKEN` | **no** | Creates end users, issues end-user tokens. Org-wide authority. |
 | `FORDEFI_API_BASE_URL` | yes | Defaults to `https://api.fordefi.com`. |
 | `FORDEFI_TEST_BACKUP_KEY` | yes | Test AES-256 key. `openssl rand -base64 32` |
+| `SOLANA_DEVNET_RPC_URL` | yes | Defaults to `https://api.devnet.solana.com`. |
 
-Only the last two are exported by the `virtual:fordefi-config` module. The API user
+Only the last three are exported by the `virtual:fordefi-config` module. The API user
 token is read in Node-side plugin code only, and is deliberately *not* `VITE_`-prefixed
 — that prefix is what makes Vite inline a value into the client bundle.
 
@@ -79,10 +81,38 @@ token is read in Node-side plugin code only, and is deliberately *not* `VITE_`-p
 5. **Recovery:** clear site data, log in → `RECOVERY_REQUIRED` → **Recover keys**.
    The key survives the clear only because of the `.env` prefill.
 6. **Create Solana vault** — `POST /api/v1/vaults` with `end_user_id`, via the dev server.
-   The base58 address renders under the button and the vault id lands in the log.
+   The id and base58 address fill the two fields and persist to localStorage, so the
+   panels below still work after a reload. Paste them by hand to reuse an existing vault.
+7. **Fund it.** Drip devnet SOL to the address at
+   [faucet.solana.com](https://faucet.solana.com). Nothing below works on an empty vault —
+   it pays the network fee, and the rent on any token account a transfer has to create.
+8. **Refresh balances.** Two columns for the same address: a direct devnet RPC read, and
+   Fordefi's indexed `GET /api/v1/vaults/{id}/assets?chains=solana_devnet`. Expect the RPC
+   column to move first. A persistently empty Fordefi column means devnet isn't enabled for
+   the org — see Gotchas.
+9. **Transfer.** Leave *SPL mint* blank for native SOL, or paste a mint and set its
+   decimals. The log narrates the whole lifecycle:
+   `waiting_for_approval → approved → signed → pushed_to_blockchain → mined → completed`,
+   with `signTransaction()` running at `approved`. The signature and a Solscan link land in
+   the log on success, and balances refresh automatically.
 
 Everything is timestamped in the log panel. `Init SDK only` isolates
 `getInstance()` from the network steps when you need to narrow a failure down.
+
+### Transaction lifecycle
+
+The dev server creates the transaction; the browser signs it. Those are two different
+credentials doing two different jobs, which is the whole point of WaaS.
+
+| Step | Who | Call |
+| --- | --- | --- |
+| 1 | dev server | `POST /api/v1/transactions` with `signer_type: "end_user"` → `id` |
+| 2 | browser | poll until `approved` |
+| 3 | browser | `fordefi.signTransaction(id)` — MPC with the enclave, resolves `void` |
+| 4 | browser | poll to `completed`, read `hash` and `explorer_url` |
+
+Step 3 returning nothing is why steps 2 and 4 exist: the signature never comes back through
+the SDK, only through the platform API.
 
 ### Device states
 
@@ -118,8 +148,38 @@ These are all things that cost time once already.
   must back up again; each extra key type also costs keygen time.
 - **The Web SDK cannot create vaults.** Its surface is `login`, `backupKeys`, `recoverKeys`,
   `exportKeys`, `signTransaction`. Vault creation is an API-user call, hence the dev-server
-  route. It needs the bearer token only — no `x-signature`/`x-timestamp`, unlike
-  transaction creation.
+  route, and it needs the bearer token only.
+- **Transaction creation may need `x-signature`/`x-timestamp`; this harness doesn't send
+  them.** Fordefi's OpenAPI says of `x-signature`: *"If the request is made programatically
+  by an API user, signing of the request is required."* No WaaS page exempts
+  `signer_type: "end_user"`, and Fordefi's own demo repos disagree with each other on it —
+  so this is unsettled, and running the transfer flow is what settles it. **Symptom:** the
+  transfer fails at *create*, before anything reaches `signTransaction`, with a 401/403
+  naming the signature. **Fix:** in `callFordefi` (`vite.config.ts`), sign
+  `` `${path}|${timestamp}|${body}` `` with an ECDSA P-256 key — SHA-256, DER, base64, valid
+  120 seconds — and add the two headers. Serialize the body once and sign that exact string.
+  The public key can only be registered through the API Signer container's *Register API
+  user key* CLI; there's no documented console path, which is the real cost.
+- **Solana Devnet has to be enabled for the org.** Chain visibility is a workspace setting
+  (Manage Chains → Customize Chain Visibility). If the chain column shows a balance and the
+  Fordefi column stays empty, that's the setting — not a bug in the request. Devnet token
+  prices are meaningless either way; only `balances.total_mined` matters here.
+- **`signTransaction()` needs a `login()` in the same page session.** The SDK singleton holds
+  the session, and nothing in localStorage substitutes for it. Vault id, address and backup
+  key all survive a reload; the ability to sign does not. Re-run *Onboard & login* first.
+- **A vault needs SOL even for a pure SPL transfer.** If the destination has no associated
+  token account, Fordefi creates one and the *source* vault pays its rent exemption on top
+  of the fee.
+- **SPL decimals are operator-supplied.** The harness doesn't read the mint, so the
+  *Decimals* field is the only thing standing between you and an amount off by orders of
+  magnitude. It nudges 9 ↔ 6 as the mint field fills and empties; that's a guess, not a
+  lookup.
+- **The mint goes in `asset_identifier.details.token.base58_repr`** — not `token.mint`, not
+  `token.address`, both of which appear in unofficial examples and neither of which exists
+  in the spec. Same for `to`: the spec wants `{type: "address", address}`, though Fordefi's
+  own docs examples pass a bare string.
+- **Balances live under `balances.total_mined`.** The flat `balance` sibling on `OwnedAsset`
+  is marked `deprecated: true` in the spec.
 - **Don't use Vite `define` for config.** It substitutes at build but not in dev, giving
   a `ReferenceError` under `npm run dev`. Hence `virtual:fordefi-config`.
 - **Google Drive is not involved** and its `<script>` tags stay commented out in
@@ -141,9 +201,10 @@ These are all things that cost time once already.
 ```
 vite.config.ts               dev backend + virtual:fordefi-config
 scripts/sync-sdk-assets.mjs  copies SDK runtime assets
-src/fordefi.ts               getInstance, login, backup, recover
+src/fordefi.ts               getInstance, login, backup, recover, signTransaction
 src/backupKey.ts             AES-256 key generate/validate/persist
 src/devApi.ts                calls to the dev endpoints
+src/solana.ts                devnet RPC reads + base-unit conversion (no deps)
 src/main.ts                  UI and flow wiring
 ```
 

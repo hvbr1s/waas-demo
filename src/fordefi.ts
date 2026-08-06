@@ -125,6 +125,26 @@ export async function recoverWithExternalKey(key: string, onLog: LogSink): Promi
   onLog('info', 'recoverKeys ok — key shares provisioned on this device')
 }
 
+/**
+ * Complete the MPC signature for a transaction the API user already created.
+ *
+ * The transaction must exist (`POST /api/v1/transactions` with `signer_type: "end_user"`)
+ * and be in `approved`; this device's share and Fordefi's enclave each compute a partial
+ * signature and the platform combines and pushes them.
+ *
+ * Two things this does *not* do. It does not return the signature — it resolves `void`, so
+ * the hash comes from polling the transaction afterwards. And it does not re-authenticate:
+ * it needs the session `login()` established on this page, so a reload means logging in
+ * again before signing, even though the vault itself is unchanged.
+ */
+export async function signTransaction(transactionId: string, onLog: LogSink): Promise<void> {
+  const fordefi = initFordefi(onLog)
+
+  onLog('info', `signTransaction(${transactionId}) — running the MPC protocol with the enclave…`)
+  await fordefi.signTransaction(transactionId)
+  onLog('info', 'signTransaction ok — Fordefi combines the shares and pushes the transaction')
+}
+
 export function describeDeviceState(state: fordefiWebSDK.DeviceState): string {
   const api = sdk()
   switch (state) {

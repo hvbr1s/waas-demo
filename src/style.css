@@ -152,6 +152,37 @@ fieldset .actions {
 .vault-address[data-kind='ok'] { color: #15803d; }
 .vault-address[data-kind='warn'] { color: #b45309; }
 
+.balances {
+  width: 100%;
+  margin: 0.85rem 0 0;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.balances th,
+.balances td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.balances th {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.balances td.num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.balances .muted {
+  opacity: 0.45;
+}
+
 @media (prefers-color-scheme: dark) {
   .key-status[data-kind='ok'] { color: #4ade80; }
   .key-status[data-kind='err'] { color: #f87171; }
