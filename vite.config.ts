@@ -168,17 +168,19 @@ function fordefiDevApi(env: Record<string, string>): Plugin {
 
             const result = await callFordefi('POST', '/api/v1/transactions', {
               vault_id: vaultId,
-              // The whole point of the WaaS flow: the API user creates the transaction but
-              // the end user's key share signs it, from the browser, via signTransaction().
               signer_type: 'end_user',
               type: 'solana_transaction',
               ...(note ? { note } : {}),
               details: {
                 type: 'solana_transfer',
-                // Object form, per the spec's discriminated union. Some Fordefi docs
-                // examples pass a bare base58 string; this is the form that is guaranteed.
-                to: { type: 'address', address: to },
-                value: { type: 'value', value },
+                to: { 
+                  type: 'address', 
+                  address: to 
+                },
+                value: { 
+                  type: 'value', 
+                  value 
+                },
                 asset_identifier: assetIdentifier,
               },
             })
